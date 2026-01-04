@@ -1,0 +1,8 @@
+jax
+jaxlib
+equinox
+optax
+diffrax
+einops
+numpy
+wandb

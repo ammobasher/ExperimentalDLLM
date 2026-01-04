@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+
+# Checkpoints and Data
+checkpoints*/
+*.npz
+*.pth
+*.safetensors
+*.ckpt
+
+# Project Specific
+.gemini/
+brain/
+Chatdetails
+run_tests.sh_output.txt
+test_multimodal_data.py_output.txt
+
+# Mac
+.DS_Store

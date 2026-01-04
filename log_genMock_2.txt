@@ -1,0 +1,43 @@
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Bypassing shape validation due to JAX error.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Traceback (most recent call last):
+  File "/Users/ahmed/Documents/ExperimentalDLLM/src/generate_visual.py", line 43, in main
+    latents = world_model.encode(img, subkey)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/equinox/_module/_prebuilt.py", line 33, in __call__
+    return self.__func__(self.__self__, *args, **kwargs)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/src/world_model.py", line 72, in encode
+    posterior = self.vae.apply(
+        {"params": self.vae_params},
+        inp,
+        method=self.vae.encode
+    )
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 892, in encode
+    hidden_states = self.encoder(sample, deterministic=deterministic)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 599, in __call__
+    sample = self.conv_in(sample)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/linear.py", line 668, in __call__
+    kernel = self.param(
+      'kernel', self.kernel_init, kernel_shape, self.param_dtype
+    )
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/nn/initializers.py", line 338, in init
+    shape = core.canonicalize_shape(shape)
+TypeError: iteration over a 0-d array
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+DEBUG: _Conv annotations: ['parent', 'name', 'strides', 'padding', 'input_dilation', 'kernel_dilation', 'feature_group_count', 'use_bias', 'mask', 'dtype', 'precision', 'conv_general_dilated', 'conv_general_dilated_cls', 'shared_weights']
+DEBUG: Conv annotations: ['parent', 'name', 'shared_weights']
+DEBUG: FlaxDownEncoderBlock2D annotations keys: ['parent', 'name', 'dropout', 'num_layers', 'resnet_groups', 'add_downsample']
+Initializing Visual Cortex...
+Loading Visual Cortex (VAE) from CompVis/stable-diffusion-v1-4...
+Visual Cortex Activated.
+Input Image Shape: (1, 512, 512, 3)
+VAE Params Keys (Top Level): dict_keys(['decoder', 'encoder', 'post_quant_conv', 'quant_conv'])
+Encoder Params Keys: dict_keys(['conv_in', 'conv_norm_out', 'conv_out', 'down_blocks_0', 'down_blocks_1', 'down_blocks_2', 'down_blocks_3', 'mid_block'])
+Total params count: 248
+Encoding...
+FAILED: iteration over a 0-d array

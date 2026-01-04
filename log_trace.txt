@@ -1,0 +1,147 @@
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+Traceback (most recent call last):
+  File "/Users/ahmed/Documents/ExperimentalDLLM/reproduce_issue.py", line 21, in <module>
+    vae, params = FlaxAutoencoderKL.from_pretrained(model_id, subfolder="vae", revision="flax")
+                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/modeling_flax_utils.py", line 442, in from_pretrained
+    params_shape_tree = jax.eval_shape(model.init_weights, rng=jax.random.PRNGKey(0))
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/traceback_util.py", line 195, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/api.py", line 3012, in eval_shape
+    return jit(fun).trace(*args, **kwargs).out_info
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/traceback_util.py", line 195, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/pjit.py", line 303, in jit_trace
+    p, args_flat = _infer_params(jit_func._fun, jit_func._jit_info, args, kwargs)
+                   ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/pjit.py", line 616, in _infer_params
+    return _infer_params_internal(fun, ji, args, kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/pjit.py", line 636, in _infer_params_internal
+    p, args_flat = _infer_params_impl(
+                   ~~~~~~~~~~~~~~~~~~^
+        fun, ji, ctx_mesh, dbg, args, kwargs, in_avals=avals)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/pjit.py", line 535, in _infer_params_impl
+    jaxpr, consts, out_avals = _create_pjit_jaxpr(
+                               ~~~~~~~~~~~~~~~~~~^
+        flat_fun, in_type, qdd_token, IgnoreKey(ji.inline))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/linear_util.py", line 460, in memoized_fun
+    ans = call(fun, *args)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/pjit.py", line 1118, in _create_pjit_jaxpr
+    jaxpr, global_out_avals, consts = pe.trace_to_jaxpr_dynamic(fun, in_type)
+                                      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/profiler.py", line 359, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/interpreters/partial_eval.py", line 2348, in trace_to_jaxpr_dynamic
+    ans = fun.call_wrapped(*in_tracers)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/linear_util.py", line 212, in call_wrapped
+    return self.f_transformed(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/api_util.py", line 83, in flatten_fun3
+    ans = f(*py_args, **py_kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 887, in init_weights
+    return self.init(rngs, sample)["params"]
+           ~~~~~~~~~^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/traceback_util.py", line 195, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 2453, in init
+    _, v_out = self.init_with_output(
+               ~~~~~~~~~~~~~~~~~~~~~^
+      rngs,
+      ^^^^^
+    ...<4 lines>...
+      **kwargs,
+      ^^^^^^^^^
+    )
+    ^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/traceback_util.py", line 195, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 2305, in init_with_output
+    return init_with_output(
+           ~~~~~~~~~~~~~~~~~
+    ...<3 lines>...
+      capture_intermediates=capture_intermediates,
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    )(rngs, *args, **kwargs)
+    ~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/core/scope.py", line 1115, in wrapper
+    return apply(fn, mutable=mutable, flags=init_flags)(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+      {}, *args, rngs=rngs, **kwargs
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/core/scope.py", line 1079, in wrapper
+    y = fn(root, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 3094, in scope_fn
+    return fn(module.clone(parent=scope, _deep_clone=True), *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 916, in __call__
+    posterior = self.encode(sample, deterministic=deterministic, return_dict=return_dict)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 892, in encode
+    hidden_states = self.encoder(sample, deterministic=deterministic)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py", line 599, in __call__
+    sample = self.conv_in(sample)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/linear.py", line 668, in __call__
+    kernel = self.param(
+      'kernel', self.kernel_init, kernel_shape, self.param_dtype
+    )
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1876, in param
+    v: T | meta.AxisMetadata[T] = self.scope.param(
+                                  ~~~~~~~~~~~~~~~~^
+        name, init_fn, *init_args, unbox=unbox, **init_kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/core/scope.py", line 968, in param
+    value = init_fn(self.make_rng('params'), *init_args, **init_kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 699, in wrapped_module_method
+    return self._call_wrapped_method(fun, args, kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/flax/linen/module.py", line 1216, in _call_wrapped_method
+    y = run_fun(self, *args, **kwargs)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/nn/initializers.py", line 338, in init
+    shape = core.canonicalize_shape(shape)
+  File "/Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/jax/_src/core.py", line 1985, in canonicalize_shape
+    raise _invalid_shape_error(shape, context)
+TypeError: Shapes must be 1D sequences of concrete values of integer type, got JitTracer(uint32[2]).
+If using `jit`, try using `static_argnums` or applying `jit` to smaller subfunctions.
+The error occurred while tracing the function init_weights at /Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py:879 for jit. This concrete value was not available in Python because it depends on the value of the argument rng.
+The error occurred while tracing the function init_weights at /Users/ahmed/Documents/ExperimentalDLLM/venv/lib/python3.14/site-packages/diffusers/models/vae_flax.py:879 for jit. This concrete value was not available in Python because it depends on the value of the argument rng.
+Python Version: 3.14.0 (v3.14.0:ebf955df7a8, Oct  7 2025, 08:20:14) [Clang 16.0.0 (clang-1600.0.26.6)]
+DEBUG: _Conv annotations: ['parent', 'name', 'strides', 'padding', 'input_dilation', 'kernel_dilation', 'feature_group_count', 'use_bias', 'mask', 'dtype', 'precision', 'conv_general_dilated', 'conv_general_dilated_cls', 'shared_weights']
+DEBUG: Conv annotations: ['parent', 'name', 'shared_weights']
+DEBUG: FlaxDownEncoderBlock2D annotations keys: ['parent', 'name', 'dropout', 'num_layers', 'resnet_groups', 'add_downsample']
+Success: Imported FlaxAutoencoderKL
+Conv Signature: (features: int, kernel_size: Any, strides: Any = 1, padding: Any = 'SAME', input_dilation: Any = 1, kernel_dilation: Any = 1, feature_group_count: Any = 1, use_bias: Any = True, mask: Any = None, dtype: Any = None, precision: Any = None, conv_general_dilated: Any = None, conv_general_dilated_cls: Any = None, parent: flax.linen.module.Module | flax.core.scope.Scope | flax.linen.module._Sentinel | None = <flax.linen.module._Sentinel object at 0x114f40ec0>, name: str | None = None) -> None
+Loading VAE from CompVis/stable-diffusion-v1-4 (revision='flax')...
