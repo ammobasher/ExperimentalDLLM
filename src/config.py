@@ -1,4 +1,5 @@
-import jax.numpy as jnp
+# Config is framework agnostic
+
 
 class Config:
     # Architecture

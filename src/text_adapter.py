@@ -1,5 +1,7 @@
-import jax
-import jax.numpy as jnp
+import numpy as np
+# import jax - REMOVED for PyTorch Migration
+# import jax.numpy as jnp - REMOVED
+
 import numpy as np
 from transformers import GPT2TokenizerFast
 from datasets import load_dataset
@@ -85,7 +87,7 @@ class TextAdapter:
             return_tensors="np"
         )
         
-        return jnp.array(encodings['input_ids'])
+        return np.array(encodings['input_ids'])
 
     def decode(self, token_ids):
         return self.tokenizer.decode(token_ids, skip_special_tokens=True)

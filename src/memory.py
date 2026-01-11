@@ -1,83 +1,82 @@
-import jax
-import jax.numpy as jnp
 import numpy as np
-import equinox as eqx
 
 class EpisodicMemory:
     """
-    Simulated Hippocampus (eLTM).
-    Stores vectors based on 'Novelty' (Prediction Error).
-    Simple In-Memory Vector Store using Cosine Similarity.
+    Episodic Memory for storing high-surprise events.
+    PyTorch Version: Expects inputs to be torch Tensors or Numpy arrays.
     """
-    def __init__(self, key: jax.random.PRNGKey, dim: int = 512, capacity: int = 10000):
+    def __init__(self, dim: int, capacity: int = 1000):
         self.dim = dim
         self.capacity = capacity
-        # We use numpy for storage to allow dynamic growth/cpu access easily
+        # Storage
         self.keys = np.zeros((capacity, dim), dtype=np.float32)
-        self.values = [] # Metadata list
+        # Values store metadata (e.g. text/tokens)
+        self.values = [None] * capacity
+        
         self.count = 0
-        self.threshold_tau = 0.5 # Dynamic threshold, updateable
-
-    def add(self, vector: np.ndarray, metadata: str, loss_val: float):
+        self.threshold_tau = 10.0 # Dynamic threshold for surprise
+        
+    def add(self, vector, metadata, loss_val: float):
         """
-        Add item if it meets novelty rule.
-        Novelty Rule: Loss > Threshold.
+        Add a memory if loss > threshold.
+        vector: [Dim] (Numpy or Torch)
+        metadata: Arbitrary (e.g. text string or tokens)
         """
-        # Auto-update threshold (Moving average)
+        # Convert Torch -> Numpy if needed
+        if hasattr(vector, 'cpu'):
+            vector = vector.detach().cpu().numpy()
+            
         if loss_val > self.threshold_tau:
             # Commit to memory
             idx = self.count % self.capacity
             self.keys[idx] = vector
-            # If overwriting, replace metadata
-            if idx < len(self.values):
-                self.values[idx] = metadata
-            else:
-                self.values.append(metadata)
-            
+            self.values[idx] = metadata
             self.count += 1
             
-            # Raise threshold slightly to habituate
+            # Dynamic Threshold Update (Slowly increase or adapt)
+            # If we add, we make it harder to add next time? Or average?
+            # Standard: Moving average of recent losses.
             self.threshold_tau = 0.95 * self.threshold_tau + 0.05 * loss_val
             return True
         else:
-            # Lower threshold slightly to avoid stagnation
+            # Decay threshold slightly to allow new things eventually
             self.threshold_tau = 0.99 * self.threshold_tau
             return False
 
-    def retrieve(self, query: np.ndarray, k: int = 3):
+    def retrieve(self, query_vector, k=1):
         """
-        Retrieve top-k similar memories.
+        Retrieve k nearest neighbors.
         """
         if self.count == 0:
             return []
             
-        # Limit search to filled area
-        valid_keys = self.keys[:min(self.count, self.capacity)]
-        
-        # Cosine Sim
-        # Norms
-        q_norm = query / (np.linalg.norm(query) + 1e-8)
-        k_norm = valid_keys / (np.linalg.norm(valid_keys, axis=1, keepdims=True) + 1e-8)
-        
-        scores = np.dot(k_norm, q_norm)
-        
-        # Top K
-        if len(scores) < k:
-            k = len(scores)
+        # Convert Torch -> Numpy
+        if hasattr(query_vector, 'cpu'):
+            query_vector = query_vector.detach().cpu().numpy()
             
-        top_indices = np.argsort(scores)[-k:][::-1]
+        # Simple Dot Product / Cosine
+        # Normalize Query
+        q = query_vector / (np.linalg.norm(query_vector) + 1e-8)
+        
+        # Valid Memory (up to capacity or count)
+        n = min(self.count, self.capacity)
+        keys = self.keys[:n]
+        
+        # Normalize Keys
+        k_norms = np.linalg.norm(keys, axis=1, keepdims=True) + 1e-8
+        keys_norm = keys / k_norms
+        
+        # Scores
+        scores = keys_norm @ q
+        
+        # Top-K
+        top_k_indices = np.argsort(scores)[-k:][::-1]
         
         results = []
-        for idx in top_indices:
+        for idx in top_k_indices:
             results.append((self.values[idx], scores[idx]))
             
         return results
-
-    def get_stats(self):
-        return {
-            "count": self.count,
-            "threshold": self.threshold_tau
-        }
 
     def save(self, path: str):
         np.savez(path, keys=self.keys, values=self.values, count=self.count, threshold=self.threshold_tau)
@@ -88,4 +87,3 @@ class EpisodicMemory:
         self.values = data['values'].tolist()
         self.count = int(data['count'])
         self.threshold_tau = float(data['threshold'])
-

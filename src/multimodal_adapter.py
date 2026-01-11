@@ -1,4 +1,3 @@
-import jax.numpy as jnp
 import numpy as np
 from datasets import load_dataset
 from PIL import Image
@@ -103,7 +102,7 @@ class MultimodalAdapter:
             return_tensors="np"
         )
         
-        batch_images = jnp.array(np.stack(images))
-        batch_tokens = jnp.array(encodings['input_ids'])
+        batch_images = np.array(np.stack(images))
+        batch_tokens = np.array(encodings['input_ids'])
         
         return batch_images, batch_tokens
