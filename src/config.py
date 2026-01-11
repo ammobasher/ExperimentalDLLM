@@ -3,7 +3,7 @@
 
 class Config:
     # Architecture
-    # Architecture (Scaled for Phase 13: ~300M Params)
+    # Architecture (Scaled for Phase 13: ~254M Params)
     embed_dim: int = 1024
     n_layers: int = 12 # Increased from 6
     n_heads: int = 16 # Increased from 8

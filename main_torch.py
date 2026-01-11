@@ -21,6 +21,9 @@ def main_torch():
     parser.add_argument("--sleep_every", type=int, default=5000)
     parser.add_argument("--save_every", type=int, default=1000)
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints_torch")
+    parser.add_argument("--resume", action="store_true", help="Resume from latest checkpoint")
+    parser.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--use_amp", action="store_true", help="Use Mixed Precision (AMP)")
     args = parser.parse_args()
     
     # 1. Hardware Setup (Apple Metal)
@@ -48,64 +51,87 @@ def main_torch():
 
     optimizer = optim.AdamW(model.parameters(), lr=Config.lr_llm)
     
+    # 3.5 AMP Setup
+    scaler = None
+    if args.use_amp:
+        # Note: torch.amp.GradScaler is more robust for cross-device
+        scaler = torch.amp.GradScaler("mps") if device.type == "mps" else torch.amp.GradScaler("cuda")
+        print(f">> Mixed Precision (AMP) Enabled for {device.type.upper()}")
+
     sde = DiffusionSDE(Config.beta_min, Config.beta_max, Config.n_timesteps)
     memory = EpisodicMemory(dim=Config.embed_dim)
 
     
     # 4. Training Loop
-    print(f"Starting Training for {args.steps} steps...")
+    start_step = 1
+    if args.resume:
+        # Find latest checkpoint
+        files = [f for f in os.listdir(args.checkpoint_dir) if f.startswith("step_") and f.endswith(".pt")]
+        if len(files) > 0:
+            # Sort by step number
+            files.sort(key=lambda x: int(x.split("_")[1].split(".")[0]))
+            latest_ckpt = files[-1]
+            ckpt_path = os.path.join(args.checkpoint_dir, latest_ckpt)
+            
+            print(f">> Resuming from checkpoint: {ckpt_path}")
+            state_dict = torch.load(ckpt_path, map_location=device)
+            model.load_state_dict(state_dict)
+            
+            start_step = int(latest_ckpt.split("_")[1].split(".")[0]) + 1
+            print(f">> Start step adjusted to {start_step}")
+        else:
+            print(">> No checkpoints found to resume from. Starting from scratch.")
+
+    print(f"Starting Training for {args.steps} steps (from {start_step})...")
     model.train()
     
     start_time = time.time()
     
-    for step in range(1, args.steps + 1):
+    optimizer.zero_grad()
+    
+    for step in range(start_step, args.steps + 1):
         # A. Fetch Data
-        # adapter.get_batch() returns numpy array [B, Seq]
         input_ids_np = adapter.get_batch()
         input_ids = torch.from_numpy(np.array(input_ids_np)).long().to(device)
         
         # B. Forward Pass (Diffusion Training)
-        # Sample t
         t = torch.rand(args.batch_size, device=device) # [0, 1]
         
-        optimizer.zero_grad()
-        
-        # Embed X_0
-        x_0 = model.embedding(input_ids) # [B, Seq, Dim]
-        
-        # Add Noise
-        drift, diffusion = sde.sde(x_0, t) # drift usually applied in ode, here we need Marginal
-        mean, std = sde.marginal_prob(x_0, t)
-        noise = torch.randn_like(x_0)
-        x_t = mean + (std * noise)
-        
-        # Run Model
-        # inputs_embeds arg in Model overrides input_ids
-        logits, pc_loss = model(inputs_embeds=x_t, t=t)
-        # Model returns Denoised Estimate (Logits -> X_0_hat) or Score?
-        # In current design, model predicts X_0 via logits.
-        
-        # Diffusion Loss
-        # We need to compute Loss(x_0, x_0_hat)
-        # Since outputs are logits, we use CrossEntropy against Input Ids?
-        # Or MSE against embeddings? 
-        # PCModel philosophy: Standard Cross Entropy on final output handles the "Reconstruction".
-        # But for diffusion, we usually want MSE on noise or x_0.
-        # Let's stick to Cross Entropy on Tokens for the "LLM" aspect.
-        # Loss = CE(logits, input_ids) + PC_Loss
-        
-        loss_ce = nn.CrossEntropyLoss()(logits.reshape(-1, vocab_size), input_ids.reshape(-1))
-        
-        total_loss = loss_ce + pc_loss
+        # Use AMP context if enabled
+        with torch.amp.autocast(device_type=device.type if device.type != "mps" else "cpu", enabled=args.use_amp):
+            # Embed X_0
+            x_0 = model.embedding(input_ids) # [B, Seq, Dim]
+            
+            # Add Noise
+            mean, std = sde.marginal_prob(x_0, t)
+            noise = torch.randn_like(x_0)
+            x_t = mean + (std * noise)
+            
+            # Run Model
+            logits, pc_loss = model(inputs_embeds=x_t, t=t)
+            
+            # Loss Calculation
+            loss_ce = nn.CrossEntropyLoss()(logits.reshape(-1, vocab_size), input_ids.reshape(-1))
+            total_loss = (loss_ce + pc_loss) / args.grad_accum
         
         # C. Backward
-        total_loss.backward()
-        optimizer.step()
+        if scaler:
+            scaler.scale(total_loss).backward()
+        else:
+            total_loss.backward()
+            
+        if step % args.grad_accum == 0:
+            if scaler:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
+            optimizer.zero_grad()
         
         # D. Logging
         if step % 10 == 0:
             elapsed = time.time() - start_time
-            print(f"[Step {step}] Loss: {total_loss.item():.4f} (CE: {loss_ce.item():.4f} | PC: {pc_loss.item():.4f}) | Time: {elapsed:.2f}s")
+            print(f"[Step {step}] Loss (Accum): {total_loss.item() * args.grad_accum:.4f} (CE: {loss_ce.item():.4f} | PC: {pc_loss.item():.4f}) | Time: {elapsed:.2f}s")
             start_time = time.time()
             
         # E. Sleep Cycle (Replay)

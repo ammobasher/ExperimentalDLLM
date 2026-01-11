@@ -1,0 +1,58 @@
+{
+  "checkpoint": "checkpoints_unified/step_50000.pt",
+  "device": "mps",
+  "timestamp": "2026-01-11T09:30:38.735871",
+  "config": {
+    "vocab_size": 50257,
+    "embed_dim": 1024,
+    "n_layers": 12,
+    "n_heads": 16
+  },
+  "perplexity": {
+    "perplexity": 485165195.4097903,
+    "cross_entropy_loss": 87.22766768198164
+  },
+  "memory": {
+    "memory_recall_accuracy": 0.2,
+    "trials": 10
+  },
+  "vision": {
+    "visual_grounding_accuracy": 0.0,
+    "samples": 80
+  },
+  "speed": {
+    "tokens_per_second": 3986.5508954808247,
+    "batch_size": 4,
+    "seq_len": 512
+  },
+  "generation": {
+    "samples": [
+      {
+        "prompt": "The future of artificial intelligence",
+        "output_preview": "The future a!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "repetition_ratio": 0.990234375
+      },
+      {
+        "prompt": "In a world where technology",
+        "output_preview": "In disadvant!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "repetition_ratio": 0.9921875
+      },
+      {
+        "prompt": "Scientists have discovered that",
+        "output_preview": " have that!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "repetition_ratio": 0.9921875
+      },
+      {
+        "prompt": "The most important thing about",
+        "output_preview": "The most important thing about!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "repetition_ratio": 0.98828125
+      },
+      {
+        "prompt": "Once upon a time there was",
+        "output_preview": "Once upon time there was!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "repetition_ratio": 0.986328125
+      }
+    ],
+    "avg_repetition_ratio": 0.98984375
+  }
+}

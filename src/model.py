@@ -33,7 +33,7 @@ class PCModel(nn.Module):
         self.visual_proj = nn.Linear(4, Config.embed_dim) # VAE 4 -> Dim
 
     def forward(self, input_ids: torch.Tensor = None, t: float = None, inputs_embeds: torch.Tensor = None, 
-                visual_latents: torch.Tensor = None, inference: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+                visual_latents: torch.Tensor = None, inference: bool = False, return_embeds: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Dual-Pass Forward.
         """
@@ -46,6 +46,9 @@ class PCModel(nn.Module):
             x = self.embedding(input_ids)
         else:
             raise ValueError("Must provide either input_ids or inputs_embeds")
+
+        if return_embeds:
+            return x
         
         # Multimodal Injection (Phase 17)
         if visual_latents is not None:
