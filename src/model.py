@@ -6,31 +6,37 @@ from src.layers import OptimizedPCLayer, PCLayer
 from src.config import Config
 
 class PCModel(nn.Module):
-    def __init__(self, key=None):
+    def __init__(self, key=None, config=None):
         super().__init__()
         # Ignore key, use torch.manual_seed if needed externally
-        
-        self.n_layers = Config.n_layers
-        self.embed_dim = Config.embed_dim
-        vocab_size = Config.vocab_size
-        
-        self.embedding = nn.Embedding(vocab_size, Config.embed_dim)
-        
+
+        # Allow custom config (for ConfigSmall, ConfigMicro)
+        self.config = config if config is not None else Config
+
+        self.n_layers = self.config.n_layers
+        self.embed_dim = self.config.embed_dim
+        vocab_size = self.config.vocab_size
+
+        self.embedding = nn.Embedding(vocab_size, self.config.embed_dim)
+
         # Stack layers
         # Usage of ModuleList to register parameters
         self.layers = nn.ModuleList([
             OptimizedPCLayer(
-                embed_dim=Config.embed_dim, 
-                n_heads=Config.n_heads, 
-                chunk_size=Config.chunk_size
-            ) 
-            for _ in range(Config.n_layers)
+                embed_dim=self.config.embed_dim,
+                n_heads=self.config.n_heads,
+                chunk_size=self.config.chunk_size
+            )
+            for _ in range(self.config.n_layers)
         ])
-        
-        self.output_head = nn.Linear(Config.embed_dim, vocab_size)
-        
+
+        self.output_head = nn.Linear(self.config.embed_dim, vocab_size)
+
         # Multimodal Projection (Phase 17)
-        self.visual_proj = nn.Linear(4, Config.embed_dim) # VAE 4 -> Dim
+        self.visual_proj = nn.Linear(4, self.config.embed_dim) # VAE 4 -> Dim
+
+        # Freezing state
+        self._frozen = False
 
     def forward(self, input_ids: torch.Tensor = None, t: float = None, inputs_embeds: torch.Tensor = None, 
                 visual_latents: torch.Tensor = None, inference: bool = False, return_embeds: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -104,5 +110,51 @@ class PCModel(nn.Module):
             
         # Final Output
         logits = self.output_head(final_features)
-        
+
         return logits, total_pc_loss
+
+    def freeze(self):
+        """
+        Freeze all model parameters for episodic-centric personalization.
+        After freezing, no gradient updates will be applied to model weights.
+        """
+        self._frozen = True
+        for param in self.parameters():
+            param.requires_grad = False
+        print("[Model] All parameters frozen. Personalization via episodic memory only.")
+
+    def unfreeze(self):
+        """
+        Unfreeze model parameters for sleep consolidation.
+        This should only be called during sleep cycles.
+        """
+        self._frozen = False
+        for param in self.parameters():
+            param.requires_grad = True
+        print("[Model] Parameters unfrozen. Sleep consolidation enabled.")
+
+    def is_frozen(self):
+        """Check if model is currently frozen."""
+        return self._frozen
+
+    def encode(self, text_or_ids):
+        """
+        Encode text/tokens to embeddings for episodic memory storage.
+
+        Args:
+            text_or_ids: Either token IDs (torch.Tensor) or text (will be tokenized)
+
+        Returns:
+            Embedding vector [embed_dim]
+        """
+        with torch.no_grad():
+            if isinstance(text_or_ids, torch.Tensor):
+                input_ids = text_or_ids
+            else:
+                # Assume it's text, would need tokenizer (placeholder)
+                raise NotImplementedError("Text encoding requires tokenizer integration")
+
+            # Get embeddings and mean pool
+            embeds = self.forward(input_ids, return_embeds=True)
+            # Mean pool over sequence dimension
+            return embeds.mean(dim=1).squeeze(0)  # [embed_dim]
