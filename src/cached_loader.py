@@ -8,10 +8,11 @@ class CachedDataLoader:
     Supports sharded lazy loading for large datasets (Rolling Cache).
     """
     
-    def __init__(self, cache_dir, device):
+    def __init__(self, cache_dir, device, target_batch_size=4):
         self.device = device
         self.step = 0
         self.cache_dir = cache_dir
+        self.target_batch_size = target_batch_size
         
         # --- Vision Cache (Load Fully - usually small) ---
         vision_path = os.path.join(cache_dir, "vision_cache.npz")
@@ -36,14 +37,15 @@ class CachedDataLoader:
         self.current_chunk_idx = -1
         self.current_chunk_data = None
         self.current_chunk_offset = 0
-        self.total_batches_approx = 0
+        self.total_samples_approx = 0
         
         if os.path.exists(legacy_path):
             print(f">> Loading legacy text cache from {legacy_path}...")
             data = np.load(legacy_path)
-            self.current_chunk_data = data['batches'] # [N, B, SeqLen]
-            self.total_batches_approx = len(self.current_chunk_data)
-            print(f"   Loaded {self.total_batches_approx} batches (Legacy Mode)")
+            raw = data['batches'] # [N, B, SeqLen]
+            self.current_chunk_data = raw.reshape(-1, raw.shape[-1]) # [N*B, SeqLen]
+            self.total_samples_approx = len(self.current_chunk_data)
+            print(f"   Loaded {self.total_samples_approx} samples (Legacy Mode)")
         else:
             # 2. Look for shards
             files = sorted([f for f in os.listdir(cache_dir) 
@@ -57,28 +59,10 @@ class CachedDataLoader:
                 self._load_next_chunk()
             else:
                  raise FileNotFoundError(f"No text cache found in {cache_dir} (Checked legacy and shards)")
-
-    def _load_next_chunk(self):
-        """Load the next available chunk into memory."""
-        # Circular loading for infinite training on finite cache?
-        # Or just cycle through shards.
-        
-        self.current_chunk_idx = (self.current_chunk_idx + 1) % len(self.chunk_files)
-        filename = self.chunk_files[self.current_chunk_idx]
-        path = os.path.join(self.cache_dir, filename)
-        
-        # print(f"   [Loader] Loading shard: {filename}...")
-        data = np.load(path)
-        self.current_chunk_data = data['batches']
-        self.current_chunk_offset = 0 
-        
-        # Update estimate
-        # (Assuming all chunks roughly same size, update approx total)
-        if self.total_batches_approx == 0:
-            self.total_batches_approx = len(self.current_chunk_data) * len(self.chunk_files)
-        
+                 
         # Compatibility with train_episodic.py
-        self.n_text_steps = self.total_batches_approx
+        # Estimate based on samples / target batch size
+        self.n_text_steps = self.total_samples_approx // self.target_batch_size
 
     @property
     def text_steps(self):
@@ -87,6 +71,21 @@ class CachedDataLoader:
     @text_steps.setter
     def text_steps(self, value):
         self.step = value
+
+    def _load_next_chunk(self):
+        """Load the next available chunk into memory and FLATTEN it."""
+        self.current_chunk_idx = (self.current_chunk_idx + 1) % len(self.chunk_files)
+        filename = self.chunk_files[self.current_chunk_idx]
+        path = os.path.join(self.cache_dir, filename)
+        
+        data = np.load(path)
+        raw = data['batches'] # [N, FileBatch, SeqLen]
+        self.current_chunk_data = raw.reshape(-1, raw.shape[-1]) # [N*FileBatch, SeqLen]
+        self.current_chunk_offset = 0 
+        
+        # Update estimate (Uses first chunk size as assumption)
+        if self.total_samples_approx == 0:
+            self.total_samples_approx = len(self.current_chunk_data) * len(self.chunk_files)
 
     def get_train_batch(self):
         """Get multimodal training batch (inner loop)."""
@@ -102,16 +101,16 @@ class CachedDataLoader:
             if self.current_chunk_data is None:
                  raise RuntimeError("No text data loaded")
                  
-            # Check if current chunk exhausted
-            if self.current_chunk_offset >= len(self.current_chunk_data):
+            # Check if current chunk exhausted (or not enough for full batch)
+            if self.current_chunk_offset + self.target_batch_size > len(self.current_chunk_data):
                 if self.sharded_mode:
                     self._load_next_chunk()
                 else:
                     self.current_chunk_offset = 0 # Loop legacy
             
-            batch_np = self.current_chunk_data[self.current_chunk_offset]
-            input_ids = torch.from_numpy(batch_np).long().to(self.device)
-            self.current_chunk_offset += 1
+            batch_slice = self.current_chunk_data[self.current_chunk_offset : self.current_chunk_offset + self.target_batch_size]
+            input_ids = torch.from_numpy(batch_slice).long().to(self.device)
+            self.current_chunk_offset += self.target_batch_size
         
         return input_ids, latents
     

@@ -164,6 +164,8 @@ def pretrain_model(model, data_loader, device, config, steps, log_interval,
         
         # Ensure batch is on device
         batch = batch.to(device)
+        if step == start_step:
+            print(f"DEBUG: Batch shape: {batch.shape}")
 
         # Forward pass
         logits, pc_loss = model(batch, inference=False)
@@ -348,8 +350,8 @@ def main():
     # Initialize CachedDataLoader
     print(f"\nInitializing CachedDataLoader from {args.cache_dir}...")
     try:
-        data_loader = CachedDataLoader(args.cache_dir, device)
-        print(f"✓ Data loader initialized with {data_loader.n_text_steps} batches")
+        data_loader = CachedDataLoader(args.cache_dir, device, target_batch_size=config.batch_size)
+        print(f"✓ Data loader initialized with {data_loader.n_text_steps} batches (Batch Size: {config.batch_size})")
     except Exception as e:
         print(f"!! Error initializing data loader: {e}")
         print("Please run cache_data.py first!")
