@@ -11,6 +11,7 @@ import numpy as np
 import os
 import time
 import argparse
+import json
 from tqdm import tqdm
 
 from src.config import Config
@@ -54,7 +55,7 @@ def cache_wikitext_data(n_steps, batch_size, output_dir, seq_len=512):
     print(f"\n[TEXT] Caching WikiText-2 ({n_steps} batches)...")
     
     from src.text_adapter import TextAdapter
-    adapter = TextAdapter(batch_size=batch_size, split="train")
+    adapter = TextAdapter(seq_len=seq_len, batch_size=batch_size, split="train")
     
     all_batches = []
     for i in tqdm(range(n_steps), desc="Caching WikiText"):
@@ -73,10 +74,11 @@ def cache_wikitext_data(n_steps, batch_size, output_dir, seq_len=512):
     return path
 
 
-def cache_slimpajama_data(n_steps, batch_size, output_dir, seq_len=512, 
+def cache_streaming_data(dataset_name, n_steps, batch_size, output_dir, seq_len=512, 
                           chunk_size=10000, resume=False):
     """
-    Stream and cache SlimPajama data from HuggingFace.
+    Stream and cache data from HuggingFace (Generic).
+    Default: HuggingFaceFW/fineweb-edu
     
     Args:
         n_steps: Number of batches to cache
@@ -86,8 +88,8 @@ def cache_slimpajama_data(n_steps, batch_size, output_dir, seq_len=512,
         chunk_size: Save checkpoint every N steps (for large caching runs)
         resume: Resume from last checkpoint if exists
     """
-    print(f"\n[TEXT] Caching SlimPajama ({n_steps} batches)...")
-    print(f"   Dataset: cerebras/SlimPajama-627B")
+    print(f"\n[TEXT] Caching Streaming Data ({n_steps} batches)...")
+    print(f"   Dataset: {dataset_name}")
     print(f"   Batch Size: {batch_size}")
     print(f"   Seq Length: {seq_len}")
     print(f"   Checkpoint Every: {chunk_size} steps")
@@ -100,38 +102,64 @@ def cache_slimpajama_data(n_steps, batch_size, output_dir, seq_len=512,
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Check for resume
-    start_chunk = 0
-    all_batches = []
+    # State Tracking (Rolling Cache)
+    state_path = os.path.join(output_dir, "dataset_state.json")
+    total_samples_processed = 0
     
+    if os.path.exists(state_path):
+        with open(state_path, 'r') as f:
+            state = json.load(f)
+            total_samples_processed = state.get("total_samples_processed", 0)
+            print(f"   Found previous state: {total_samples_processed} samples processed")
+    
+    # Check for resume of current block (if we crashed mid-block)
+    start_chunk = 0
     if resume:
-        # Find existing chunks
+        # Find existing chunks in this block
         existing_chunks = [f for f in os.listdir(output_dir) 
                          if f.startswith("text_cache_chunk_") and f.endswith(".npz")]
         if existing_chunks:
             start_chunk = len(existing_chunks)
-            print(f"   Resuming from chunk {start_chunk}")
+            print(f"   Resuming block from chunk {start_chunk}")
     
-    # Stream SlimPajama
-    print("   Loading SlimPajama streaming dataset...")
-    ds = load_dataset(
-        "cerebras/SlimPajama-627B", 
-        split="train", 
-        streaming=True,
-        trust_remote_code=True
-    )
+    # Stream Dataset
+    print(f"   Loading {dataset_name} streaming dataset...")
+    try:
+        ds = load_dataset(
+            dataset_name, 
+            split="train", 
+            streaming=True
+        )
+    except Exception:
+        # Fallback for datasets needing subset definition (like fineweb)
+        ds = load_dataset(
+            dataset_name,
+            name="default",
+            split="train", 
+            streaming=True
+        )
     ds_iter = iter(ds)
     
-    # Skip to resume point
-    if start_chunk > 0:
-        skip_samples = start_chunk * chunk_size * batch_size
-        print(f"   Skipping {skip_samples} samples for resume...")
-        for _ in tqdm(range(skip_samples), desc="Skipping"):
+    # Skip globally processed samples (from previous rolling blocks)
+    # PLUS the samples processed in the current partial block if resuming
+    samples_in_current_block_so_far = start_chunk * chunk_size * batch_size
+    total_skip = total_samples_processed + samples_in_current_block_so_far
+    
+    if total_skip > 0:
+        print(f"   Skipping {total_skip} samples (Global: {total_samples_processed} + Current: {samples_in_current_block_so_far})...")
+        # Optimization: Modern streaming datasets might support skip, but iterate is safest for now
+        # For huge skips, this might take a while.
+        # Ideally, we would track "shards" or similar if HF dataset supports it.
+        # For now, fast iteration.
+        
+        # tqdm for skipping
+        for _ in tqdm(range(total_skip), desc="Skipping Samples"):
             try:
                 next(ds_iter)
             except StopIteration:
-                ds_iter = iter(ds)
-                next(ds_iter)
+                 # Restart if we wrapped (unlikely for 600B but possible)
+                 ds_iter = iter(ds)
+                 next(ds_iter)
     
     current_chunk_batches = []
     samples_in_batch = []
@@ -171,12 +199,7 @@ def cache_slimpajama_data(n_steps, batch_size, output_dir, seq_len=512,
             except StopIteration:
                 # Restart dataset if exhausted
                 print("\n   Dataset exhausted, restarting...")
-                ds = load_dataset(
-                    "cerebras/SlimPajama-627B",
-                    split="train",
-                    streaming=True,
-                    trust_remote_code=True
-                )
+                ds = load_dataset(dataset_name, split="train", streaming=True)
                 ds_iter = iter(ds)
         
         # Create batch
@@ -189,29 +212,106 @@ def cache_slimpajama_data(n_steps, batch_size, output_dir, seq_len=512,
         
         # Save checkpoint
         if len(current_chunk_batches) >= chunk_size:
-            chunk_idx = step // chunk_size
+            chunk_idx = (step // chunk_size) - 1 # 0-indexed
             chunk_data = np.stack(current_chunk_batches)
+            
+            # Use step count in filename to avoid overwrites if resuming? 
+            # Actually, standard chunk index 0, 1, 2 is fine for the current block.
+            # But if we delete files, we might want unique names?
+            # Let's keep 0..N for the loader simplicity, assuming user clears dir.
+            
             chunk_path = os.path.join(output_dir, f"text_cache_chunk_{chunk_idx:04d}.npz")
             np.savez_compressed(chunk_path, batches=chunk_data)
             size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
             print(f"\n   Saved chunk {chunk_idx}: {chunk_data.shape} ({size_mb:.1f} MB)")
             current_chunk_batches = []
+            
+            # Update state file
+            # We add chunk_size * batch_size to the global counter *only if we finish the block*?
+            # No, let's just track locally and update global at the very end to be safe?
+            # Or update intermediate? Secure approach: Update intermediate.
+            # But wait, 'total_samples_processed' is the start offset.
+            # We shouldn't write to it until we are done with this run?
+            # Actually, if we use it for skipping, we should only update it IF we intend to persist this progress.
+            # For rolling cache, we usually finish the block, train, then delete.
+            # So the state file should be updated.
+            pass
     
     pbar.close()
     
     # Save remaining batches
     if current_chunk_batches:
-        chunk_idx = (step // chunk_size) + 1
+        chunk_idx = (step // chunk_size)
         chunk_data = np.stack(current_chunk_batches)
         chunk_path = os.path.join(output_dir, f"text_cache_chunk_{chunk_idx:04d}.npz")
         np.savez_compressed(chunk_path, batches=chunk_data)
         size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
         print(f"   Saved final chunk {chunk_idx}: {chunk_data.shape} ({size_mb:.1f} MB)")
+
+    # Update Global State
+    # Only now do we update the total processed count
+    # Steps taken * batch_size
+    samples_processed_this_run = (step - (start_chunk * chunk_size)) * batch_size
+    # Actually 'step' is total steps in this run.
+    # Total added = step * batch_size
+    # total_samples_processed (start) + step (this run) * batch_size
+    # Wait, 'step' starts at start_chunk * chunk_size.
+    # So step count is correct total for this run.
     
-    # Merge all chunks into single file (optional, for compatibility)
-    merge_chunks(output_dir)
+    # We need to account for the actual samples consumed.
+    # total_samples_processed was the offset at start.
+    # We skipped that many.
+    # Then we consumed 'step' batches.
+    # NO. 'step' iterates from START to TARGET.
+    # But we skipped 'total_samples_processed' before entering the loop (if global offset).
+    # So the new global total is: old_total + (steps_this_run * batch_size).
     
-    return os.path.join(output_dir, "text_cache.npz")
+    # Let's count actual batches produced in this run.
+    batches_produced = step - (start_chunk * chunk_size)
+    
+    # However, 'step' variable accumulates from start_chunk*chunk_size.
+    # So 'step' IS the number of batches in this block (offset by resume).
+    
+    # Total samples consumed from the dataset = Initial Offset + (step * batch_size)
+    # Wait, if we resumed the block, we skipped block-offset too.
+    # The 'total_skip' was global + block-resume.
+    # The iterator is at that position.
+    # We then consumed 'batches_produced' batches.
+    
+    # So new global offset = total_skip + (batches_produced * batch_size)
+    # BUT, total_skip handles the resume.
+    # If we want to record "Done with Block 1", we just want the global offset to move by Block 1 size.
+    
+    # Simpler:
+    # new_total = total_samples_processed (global start) + (n_steps * batch_size)
+    # (Assuming we completed the full requested n_steps)
+    
+    # If we resumed mid-block, we just want to update the global counter by what we added?
+    # No, the global counter tracks the "cursor" in the infinite dataset.
+    # If we finished this block (which is presumably sequential), the cursor is now at:
+    # Start + Samples_In_Block.
+    
+    # Let's verify 'step'.
+    # step starts at start_chunk*chunk_size.
+    # loops until target_steps.
+    # So total batches in this block = target_steps.
+    
+    new_total_samples = total_samples_processed + (target_steps * batch_size)
+    
+    state = {
+        "total_samples_processed": new_total_samples,
+        "last_update": time.ctime()
+    }
+    with open(state_path, 'w') as f:
+        json.dump(state, f, indent=2)
+        
+    print(f"\n   [STATE] Updated total samples processed: {new_total_samples} (Shifted cursor)")
+    print(f"   [STATE] Saved to {state_path}")
+    
+    # Disable merge for large scale
+    # merge_chunks(output_dir)
+    
+    return os.path.join(output_dir, "dataset_state.json")
 
 
 def merge_chunks(output_dir):
@@ -326,9 +426,8 @@ def main():
                        help="Samples per batch")
     parser.add_argument("--output_dir", type=str, default="cached_data",
                        help="Output directory for cached data")
-    parser.add_argument("--dataset", type=str, default="wikitext",
-                       choices=["wikitext", "slimpajama"],
-                       help="Dataset to cache")
+    parser.add_argument("--dataset", type=str, default="HuggingFaceFW/fineweb-edu",
+                        help="Dataset to cache (default: fineweb-edu)")
     parser.add_argument("--seq_len", type=int, default=512,
                        help="Sequence length")
     parser.add_argument("--skip_vision", action="store_true",
@@ -358,9 +457,9 @@ def main():
         text_path = cache_wikitext_data(
             args.steps, args.batch_size, args.output_dir, args.seq_len
         )
-    else:  # slimpajama
-        text_path = cache_slimpajama_data(
-            args.steps, args.batch_size, args.output_dir, args.seq_len,
+    else:  # streaming
+        text_path = cache_streaming_data(
+            args.dataset, args.steps, args.batch_size, args.output_dir, args.seq_len,
             chunk_size=args.chunk_size, resume=args.resume
         )
     

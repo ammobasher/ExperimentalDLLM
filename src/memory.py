@@ -5,7 +5,7 @@ class EpisodicMemory:
     Episodic Memory for storing high-surprise events.
     PyTorch Version: Expects inputs to be torch Tensors or Numpy arrays.
     """
-    def __init__(self, dim: int, capacity: int = 1000):
+    def __init__(self, dim: int, capacity: int = 1000, threshold: float = 10.0):
         self.dim = dim
         self.capacity = capacity
         # Storage
@@ -14,7 +14,7 @@ class EpisodicMemory:
         self.values = [None] * capacity
         
         self.count = 0
-        self.threshold_tau = 10.0 # Dynamic threshold for surprise
+        self.threshold_tau = threshold # Dynamic threshold for surprise
         
     def add(self, vector, metadata, loss_val: float):
         """
@@ -79,7 +79,10 @@ class EpisodicMemory:
         return results
 
     def save(self, path: str):
-        np.savez(path, keys=self.keys, values=self.values, count=self.count, threshold=self.threshold_tau)
+        # Convert values to object array to handle variable-length data
+        values_arr = np.empty(len(self.values), dtype=object)
+        values_arr[:] = self.values
+        np.savez(path, keys=self.keys, values=values_arr, count=self.count, threshold=self.threshold_tau)
 
     def load(self, path: str):
         data = np.load(path, allow_pickle=True)
@@ -87,3 +90,33 @@ class EpisodicMemory:
         self.values = data['values'].tolist()
         self.count = int(data['count'])
         self.threshold_tau = float(data['threshold'])
+
+    def sample_for_consolidation(self, n=100, strategy='random'):
+        """Sample memories for sleep consolidation."""
+        if self.count == 0:
+            return []
+            
+        n = min(n, self.count)
+        indices = np.random.choice(self.count, n, replace=False)
+        
+        # Return list of memory values (the content/tokens)
+        sampled = []
+        for idx in indices:
+            sampled.append(self.values[idx])
+        return sampled
+
+    def prune_redundant(self, similarity_threshold=0.95):
+        """Prune memories that are too similar (placeholder)."""
+        # Full implementation would use faiss/clustering.
+        # For now, we simulate pruning by removing oldest if full.
+        # Returning current count for now.
+        return self.count
+
+    def get_stats(self):
+        return {
+            'count': self.count,
+            'capacity': self.capacity,
+            'threshold': self.threshold_tau,
+            'usage_percent': (self.count / self.capacity) * 100 if self.capacity > 0 else 0,
+            'avg_retrieval_time_ms': 0.0 # Placeholder
+        }

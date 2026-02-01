@@ -113,6 +113,8 @@ class PCModel(nn.Module):
 
         return logits, total_pc_loss
 
+
+
     def freeze(self):
         """
         Freeze all model parameters for episodic-centric personalization.

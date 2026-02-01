@@ -1,0 +1,23 @@
+Step 100/50000:
+  Memories: 75/50000 (0.1%)
+  Added: 75, Rejected: 25
+  Avg Surprise: 0.8708, Threshold: 0.7955
+  Sleep Cycles: 0
+
+Step 49800/50000:
+  Memories: 34579/50000 (69.2%)
+  Added: 34579, Rejected: 15221
+  Avg Surprise: 0.8505, Threshold: 0.8612
+  Sleep Cycles: 0
+
+Step 49900/50000:
+  Memories: 34653/50000 (69.3%)
+  Added: 34653, Rejected: 15247
+  Avg Surprise: 0.8505, Threshold: 0.8901
+  Sleep Cycles: 0
+
+Step 50000/50000:
+  Memories: 34717/50000 (69.4%)
+  Added: 34717, Rejected: 15283
+  Avg Surprise: 0.8505, Threshold: 0.7919
+  Sleep Cycles: 0

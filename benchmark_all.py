@@ -9,7 +9,7 @@ import argparse
 from tqdm import tqdm
 
 from src.model import PCModel
-from src.config import Config
+from src.config import Config, ConfigSmall, ConfigMicro
 from src.text_adapter import TextAdapter
 
 def calculate_ppl(model, test_loader, device, is_baseline=False, vocab_size=50257):
@@ -69,6 +69,7 @@ def benchmark_all():
     parser = argparse.ArgumentParser()
     parser.add_argument("--synapse_ckpt", type=str, default=None)
     parser.add_argument("--baseline_ckpt", type=str, default=None)
+    parser.add_argument("--config", type=str, default='base', choices=['base', 'small', 'micro'], help="Model configuration to use")
     args = parser.parse_args()
     
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -79,12 +80,21 @@ def benchmark_all():
     print(">> Loading WikiText-2 Test Set...")
     dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     adapter = TextAdapter(dataset_name="wikitext", split="test") # Init adapter to get tokenizer
-    Config.vocab_size = adapter.vocab_size # Update Config BEFORE model init
+    
+    # Select Config based on argument
+    if args.config == 'small':
+        CurrentConfig = ConfigSmall
+    elif args.config == 'micro':
+        CurrentConfig = ConfigMicro
+    else:
+        CurrentConfig = Config
+
+    CurrentConfig.vocab_size = adapter.vocab_size # Update Config BEFORE model init
     
     # Preprocess
     encodings = adapter.tokenizer("\n\n".join(dataset["text"]), return_tensors="pt")
     # Sliding window or chunks
-    seq_len = Config.seq_len
+    seq_len = CurrentConfig.seq_len
     input_ids = encodings.input_ids
     
     # Create batches
@@ -101,8 +111,8 @@ def benchmark_all():
     
     # 2. Evaluate Synapse
     if args.synapse_ckpt and os.path.exists(args.synapse_ckpt):
-        print(f">> Loading Synapse Model from {args.synapse_ckpt}...")
-        synapse_model = PCModel().to(device)
+        print(f">> Loading Synapse Model ({args.config}) from {args.synapse_ckpt}...")
+        synapse_model = PCModel(config=CurrentConfig).to(device)
         ckpt = torch.load(args.synapse_ckpt, map_location=device)
         if isinstance(ckpt, dict) and 'model_state' in ckpt:
             print(">> Detected Unified Checkpoint format.")
@@ -121,7 +131,7 @@ def benchmark_all():
     # 3. Evaluate Baseline
     if args.baseline_ckpt and os.path.exists(args.baseline_ckpt):
         print(f">> Loading Baseline GPT-2 from {args.baseline_ckpt}...")
-        config = GPT2Config(vocab_size=adapter.vocab_size, n_positions=Config.seq_len, n_embd=Config.embed_dim, n_layer=Config.n_layers, n_head=Config.n_heads)
+        config = GPT2Config(vocab_size=adapter.vocab_size, n_positions=CurrentConfig.seq_len, n_embd=CurrentConfig.embed_dim, n_layer=CurrentConfig.n_layers, n_head=CurrentConfig.n_heads)
         baseline_model = GPT2LMHeadModel(config).to(device)
         baseline_model.load_state_dict(torch.load(args.baseline_ckpt, map_location=device))
         

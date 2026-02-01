@@ -29,6 +29,7 @@ class Config:
     freeze_base: bool = False  # Set to True after pre-training
     enable_sleep: bool = False  # Enable sleep consolidation
     memory_capacity: int = 50000  # Episodic memory capacity
+    memory_threshold: float = 2.0  # Initial surprise threshold
 
 
 class ConfigSmall:
@@ -60,7 +61,7 @@ class ConfigSmall:
     beta_max: float = 10.0  # Reduced from 20
 
     # Training
-    vocab_size: int = 32000
+    vocab_size: int = 50257
     lr_llm: float = 1e-4
     lr_ctrl: float = 1e-5
     lr_sleep: float = 1e-5  # Learning rate for sleep consolidation
@@ -72,6 +73,7 @@ class ConfigSmall:
     enable_sleep: bool = True   # Enable sleep consolidation
     memory_capacity: int = 50000  # 50K vectors (~50MB at 768 dim)
     memory_dim: int = 768  # Must match embed_dim
+    memory_threshold: float = 0.5  # Tuned for quick adoption (Avg suprise ~0.85)
 
     # Sleep Consolidation
     sleep_trigger_threshold: float = 0.8  # Trigger when memory >80% full
@@ -96,7 +98,7 @@ class ConfigMicro:
     beta_min: float = 0.1
     beta_max: float = 10.0
 
-    vocab_size: int = 32000
+    vocab_size: int = 50257
     lr_llm: float = 1e-4
     lr_ctrl: float = 1e-5
     lr_sleep: float = 1e-5
@@ -107,6 +109,7 @@ class ConfigMicro:
     enable_sleep: bool = True
     memory_capacity: int = 25000  # 25K vectors (~13MB)
     memory_dim: int = 512
+    memory_threshold: float = 0.5
 
     sleep_trigger_threshold: float = 0.8
     sleep_replay_samples: int = 500

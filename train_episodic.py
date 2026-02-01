@@ -18,12 +18,47 @@ from torch.utils.data import DataLoader
 import argparse
 import time
 from pathlib import Path
+import os
 
 from src.model import PCModel
 from src.config import Config, ConfigSmall, ConfigMicro
-from src.memory_optimized import OptimizedEpisodicMemory
-from src.memory_generate import MemoryAugmentedModel, compute_surprise
+from src.memory import EpisodicMemory
 from src.sleep import SleepConsolidation, SleepScheduler
+from src.cached_loader import CachedDataLoader
+
+# --- Helper Classes (Polyfills for missing files) ---
+
+class MemoryAugmentedModel:
+    """Wrapper to handle interaction between Model and EpisodicMemory."""
+    def __init__(self, model, memory, config):
+        self.model = model
+        self.memory = memory
+        self.config = config
+        
+    def add_memory(self, batch, surprise_score):
+        """Add batch to memory if surprising."""
+        with torch.no_grad():
+            # Get embedding for storage (mean of sequence)
+            embed = self.model(batch, return_embeds=True).mean(dim=1)
+            
+        # Add to memory
+        return self.memory.add(embed[0], batch[0].cpu().tolist(), surprise_score)
+
+def compute_surprise(model, batch):
+    """Compute predictive coding loss as surprise metric."""
+    with torch.no_grad():
+        _, pc_loss = model(batch, inference=False)
+    return pc_loss.mean().item()
+
+# ----------------------------------------------------
+
+def get_best_device():
+    """Detect the best available device (CUDA > MPS > CPU)."""
+    if torch.cuda.is_available():
+        return 'cuda'
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        return 'mps'
+    return 'cpu'
 
 
 def parse_args():
@@ -36,14 +71,20 @@ def parse_args():
                        help='Training mode')
     parser.add_argument('--checkpoint', type=str, default=None,
                        help='Load model from checkpoint')
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
-                       help='Device to use')
+    parser.add_argument('--resume', type=str, default=None,
+                       help='Resume training from checkpoint directory')
+    parser.add_argument('--device', type=str, default=get_best_device(),
+                       help='Device to use (cuda, mps, or cpu)')
     parser.add_argument('--steps', type=int, default=10000,
                        help='Number of training steps')
     parser.add_argument('--log_interval', type=int, default=100,
                        help='Logging interval')
+    parser.add_argument('--checkpoint_interval', type=int, default=5000,
+                       help='Save checkpoint every N steps')
     parser.add_argument('--save_dir', type=str, default='checkpoints',
                        help='Directory to save checkpoints')
+    parser.add_argument('--cache_dir', type=str, default='cached_data',
+                       help='Directory with cached data')
     return parser.parse_args()
 
 
@@ -57,22 +98,72 @@ def get_config(config_name: str):
     return configs[config_name]
 
 
-def pretrain_model(model, data_loader, device, config, steps, log_interval):
+def save_checkpoint(model, optimizer, step, save_dir, config_name, mode, data_loader_pos=None):
+    """Save training checkpoint for resumption."""
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True)
+    
+    checkpoint = {
+        'step': step,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'config_name': config_name,
+        'mode': mode,
+        'data_loader_pos': data_loader_pos,
+    }
+    
+    checkpoint_path = save_dir / f"checkpoint_{config_name}_{mode}_step{step}.pt"
+    torch.save(checkpoint, checkpoint_path)
+    
+    # Also save a "latest" symlink/copy for easy resumption
+    latest_path = save_dir / f"checkpoint_{config_name}_{mode}_latest.pt"
+    torch.save(checkpoint, latest_path)
+    
+    print(f"💾 Checkpoint saved: step {step} → {checkpoint_path.name}")
+    return checkpoint_path
+
+
+def load_checkpoint(checkpoint_path, model, optimizer=None, device='cpu'):
+    """Load training checkpoint for resumption."""
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    
+    return checkpoint.get('step', 0), checkpoint.get('data_loader_pos', 0)
+
+
+def pretrain_model(model, data_loader, device, config, steps, log_interval, 
+                   checkpoint_interval=5000, save_dir='checkpoints', config_name='small',
+                   start_step=0, optimizer=None):
     """
     Pre-training phase: Standard training with PC loss.
 
     This creates the base model with general knowledge.
+    Now with intermediate checkpointing for resumption.
     """
     print("\n" + "="*60)
     print("PRE-TRAINING PHASE")
     print("="*60)
+    if start_step > 0:
+        print(f"Resuming from step {start_step}")
 
     model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr_llm)
+    if optimizer is None:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr_llm)
+    
+    start_time = time.time()
+    total_steps = start_step + steps
 
-    for step in range(steps):
-        # Get batch (placeholder - would use real data loader)
-        batch = torch.randint(0, config.vocab_size, (config.batch_size, config.seq_len), device=device)
+    for step in range(start_step, total_steps):
+        # Get batch from real data loader
+        batch, _ = data_loader.get_train_batch()
+        # Advance loader
+        data_loader.advance()
+        
+        # Ensure batch is on device
+        batch = batch.to(device)
 
         # Forward pass
         logits, pc_loss = model(batch, inference=False)
@@ -97,13 +188,22 @@ def pretrain_model(model, data_loader, device, config, steps, log_interval):
 
         # Logging
         if (step + 1) % log_interval == 0:
-            print(f"Step {step+1}/{steps}: Loss={loss.item():.4f}, CE={ce_loss.item():.4f}, PC={pc_loss.item():.4f}")
+            elapsed = time.time() - start_time
+            print(f"Step {step+1}/{total_steps}: Loss={loss.item():.4f}, CE={ce_loss.item():.4f}, PC={pc_loss.item():.4f} ({elapsed:.2f}s)")
+            start_time = time.time()
+        
+        # Checkpointing
+        if (step + 1) % checkpoint_interval == 0:
+            save_checkpoint(
+                model, optimizer, step + 1, save_dir, config_name, 'pretrain',
+                data_loader_pos=data_loader.text_steps if hasattr(data_loader, 'text_steps') else None
+            )
 
     print("\n✓ Pre-training complete\n")
-    return model
+    return model, optimizer
 
 
-def personalize_model(model, memory, sleep, device, config, steps, log_interval):
+def personalize_model(model, memory, data_loader, device, config, steps, log_interval):
     """
     Personalization phase: Frozen model + episodic memory.
 
@@ -118,11 +218,15 @@ def personalize_model(model, memory, sleep, device, config, steps, log_interval)
     print("="*60)
 
     # Ensure model is frozen
-    if not model.is_frozen():
-        model.freeze()
+    model.freeze()
 
     # Create memory-augmented wrapper
     mem_model = MemoryAugmentedModel(model, memory, config)
+
+    # Initialize sleep consolidation
+    print("\nInitializing sleep consolidation...")
+    sleep = SleepConsolidation(model, memory, config)
+    print("✓ Sleep consolidation initialized")
 
     # Setup sleep scheduler
     scheduler = SleepScheduler(sleep, strategy='threshold')
@@ -135,16 +239,21 @@ def personalize_model(model, memory, sleep, device, config, steps, log_interval)
         'total_surprise': 0.0,
     }
 
+    start_time = time.time()
+
     for step in range(steps):
-        # Simulate user interaction (in real use, this would be actual user queries)
-        batch = torch.randint(0, config.vocab_size, (1, config.seq_len), device=device)
+        # Simulate user interaction using real data
+        batch, _ = data_loader.get_train_batch()
+        data_loader.advance()
+        
+        batch = batch.to(device)
 
         # Compute surprise for this interaction
         surprise = compute_surprise(model, batch)
         stats['total_surprise'] += surprise
 
         # Try to add to episodic memory
-        added = mem_model.add_memory(batch)
+        added = mem_model.add_memory(batch, surprise)
 
         if added:
             stats['memories_added'] += 1
@@ -152,22 +261,26 @@ def personalize_model(model, memory, sleep, device, config, steps, log_interval)
             stats['memories_rejected'] += 1
 
         # Check if sleep should be triggered
-        sleep_result = scheduler.check_and_consolidate()
-
-        if sleep_result:
-            stats['sleep_cycles'] += 1
+        if config.enable_sleep:
+             sleep_result = scheduler.check_and_consolidate()
+             if sleep_result:
+                 stats['sleep_cycles'] += 1
+                 # Note: model is re-frozen automatically by sleep.consolidate
 
         # Logging
         if (step + 1) % log_interval == 0:
+            # Re-calculate usage
             mem_stats = memory.get_stats()
             avg_surprise = stats['total_surprise'] / (step + 1)
+            elapsed = time.time() - start_time
 
             print(f"\nStep {step+1}/{steps}:")
             print(f"  Memories: {mem_stats['count']}/{mem_stats['capacity']} ({mem_stats['usage_percent']:.1f}%)")
             print(f"  Added: {stats['memories_added']}, Rejected: {stats['memories_rejected']}")
             print(f"  Avg Surprise: {avg_surprise:.4f}, Threshold: {mem_stats['threshold']:.4f}")
             print(f"  Sleep Cycles: {stats['sleep_cycles']}")
-            print(f"  Retrieval Time: {mem_stats['avg_retrieval_time_ms']:.2f}ms")
+            
+            start_time = time.time()
 
     print("\n✓ Personalization complete\n")
     print(f"Final Statistics:")
@@ -187,7 +300,14 @@ def main():
     print(f"Config: {args.config}")
     print(f"Mode: {args.mode}")
     print(f"Device: {args.device}")
+    if args.device == 'mps':
+        print("🚀 Using Apple Silicon GPU (MPS) for acceleration!")
+    elif args.device == 'cuda':
+        print(f"🚀 Using CUDA GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("⚠️  Using CPU - training will be slow. Consider using --device mps")
     print(f"Steps: {args.steps}")
+    print(f"Checkpoint interval: {args.checkpoint_interval}")
     print("="*60)
 
     # Get configuration
@@ -200,7 +320,9 @@ def main():
     if args.checkpoint:
         print(f"\nLoading model from {args.checkpoint}...")
         model = PCModel(config=config)
-        model.load_state_dict(torch.load(args.checkpoint, map_location=device))
+        # Handle state dict loading
+        state_dict = torch.load(args.checkpoint, map_location=device)
+        model.load_state_dict(state_dict, strict=False)
         print("✓ Model loaded")
     else:
         print(f"\nInitializing new model...")
@@ -215,31 +337,59 @@ def main():
 
     # Initialize episodic memory
     print(f"\nInitializing episodic memory (capacity: {config.memory_capacity})...")
-    memory = OptimizedEpisodicMemory(
+    # Using standard EpisodicMemory from src.memory
+    memory = EpisodicMemory(
         dim=config.memory_dim,
         capacity=config.memory_capacity,
-        use_faiss=True
+        threshold=config.memory_threshold
     )
     print("✓ Memory initialized")
+    
+    # Initialize CachedDataLoader
+    print(f"\nInitializing CachedDataLoader from {args.cache_dir}...")
+    try:
+        data_loader = CachedDataLoader(args.cache_dir, device)
+        print(f"✓ Data loader initialized with {data_loader.n_text_steps} batches")
+    except Exception as e:
+        print(f"!! Error initializing data loader: {e}")
+        print("Please run cache_data.py first!")
+        return
 
-    # Initialize sleep consolidation
-    print("\nInitializing sleep consolidation...")
-    sleep = SleepConsolidation(model, memory, config)
-    print("✓ Sleep consolidation initialized")
+    # Check for resume
+    start_step = 0
+    optimizer = None
+    if args.resume:
+        resume_path = Path(args.resume)
+        if resume_path.is_dir():
+            resume_path = resume_path / f"checkpoint_{args.config}_{args.mode}_latest.pt"
+        if resume_path.exists():
+            print(f"\n📂 Resuming from {resume_path}...")
+            optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr_llm)
+            start_step, loader_pos = load_checkpoint(resume_path, model, optimizer, device)
+            if loader_pos:
+                data_loader.text_steps = loader_pos
+            print(f"✓ Resumed from step {start_step}")
+        else:
+            print(f"⚠️  Resume checkpoint not found: {resume_path}")
 
     # Training modes
     if args.mode == 'pretrain':
         # Pre-training only
-        model = pretrain_model(
-            model, None, device, config,
+        model, optimizer = pretrain_model(
+            model, data_loader, device, config,
             steps=args.steps,
-            log_interval=args.log_interval
+            log_interval=args.log_interval,
+            checkpoint_interval=args.checkpoint_interval,
+            save_dir=args.save_dir,
+            config_name=args.config,
+            start_step=start_step,
+            optimizer=optimizer
         )
 
     elif args.mode == 'personalize':
         # Personalization only (assumes pretrained model)
         model, memory = personalize_model(
-            model, memory, sleep, device, config,
+            model, memory, data_loader, device, config,
             steps=args.steps,
             log_interval=args.log_interval
         )
@@ -251,14 +401,14 @@ def main():
 
         # Pre-train
         model = pretrain_model(
-            model, None, device, config,
+            model, data_loader, device, config,
             steps=pretrain_steps,
             log_interval=args.log_interval
         )
 
         # Personalize
         model, memory = personalize_model(
-            model, memory, sleep, device, config,
+            model, memory, data_loader, device, config,
             steps=personalize_steps,
             log_interval=args.log_interval
         )
@@ -282,7 +432,6 @@ def main():
     print("="*60)
     print(f"Model: {n_params/1e6:.1f}M params")
     print(f"Memory: {memory.count} experiences")
-    print(f"Sleep cycles: {sleep.stats['total_sleep_cycles']}")
     print("="*60)
 
 

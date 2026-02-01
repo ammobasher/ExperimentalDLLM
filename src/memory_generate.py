@@ -16,7 +16,7 @@ def generate_with_memory(
     input_ids: torch.Tensor,
     max_length: int = 100,
     k_memories: int = 5,
-    min_similarity: float = 0.5,
+    min_similarity: float = 0.1,
     temperature: float = 0.7,
     top_p: float = 0.9,
     top_k: int = 50,

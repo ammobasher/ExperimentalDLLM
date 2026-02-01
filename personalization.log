@@ -1,0 +1,36 @@
+EPISODIC-CENTRIC SMALL LLM TRAINING
+============================================================
+Config: small
+Mode: personalize
+Device: mps
+🚀 Using Apple Silicon GPU (MPS) for acceleration!
+Steps: 2000
+Checkpoint interval: 1000
+============================================================
+
+Loading model from checkpoints/checkpoint_small_pretrain_step500000.pt...
+✓ Model loaded
+Model parameters: 134.0M
+
+Initializing episodic memory (capacity: 50000)...
+✓ Memory initialized
+
+Initializing CachedDataLoader from cached_data...
+>> Loading text cache from cached_data/text_cache.npz...
+   Loaded 5000 text batches
+   Vision cache not found, using text-only mode
+✓ Data loader initialized with 5000 batches
+
+============================================================
+PERSONALIZATION PHASE (Episodic-Centric)
+============================================================
+[Model] All parameters frozen. Personalization via episodic memory only.
+
+Initializing sleep consolidation...
+✓ Sleep consolidation initialized
+
+Step 100/2000:
+  Memories: 0/50000 (0.0%)
+  Added: 0, Rejected: 100
+  Avg Surprise: 0.8535, Threshold: 3.6603
+  Sleep Cycles: 0
