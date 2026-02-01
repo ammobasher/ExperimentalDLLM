@@ -65,7 +65,7 @@ class ConfigSmall:
     lr_llm: float = 1e-4
     lr_ctrl: float = 1e-5
     lr_sleep: float = 1e-5  # Learning rate for sleep consolidation
-    batch_size: int = 32
+    batch_size: int = 8
     seq_len: int = 512
 
     # Episodic Memory & Freezing
