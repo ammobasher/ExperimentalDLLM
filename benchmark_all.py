@@ -117,6 +117,9 @@ def benchmark_all():
         if isinstance(ckpt, dict) and 'model_state' in ckpt:
             print(">> Detected Unified Checkpoint format.")
             state_dict = ckpt['model_state']
+        elif isinstance(ckpt, dict) and 'model_state_dict' in ckpt:
+            print(">> Detected Training Checkpoint format.")
+            state_dict = ckpt['model_state_dict']
         else:
             state_dict = ckpt
             
