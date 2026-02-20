@@ -25,6 +25,7 @@ from src.config import Config, ConfigSmall, ConfigMicro
 from src.memory import EpisodicMemory
 from src.sleep import SleepConsolidation, SleepScheduler
 from src.cached_loader import CachedDataLoader
+from src.streaming_loader import StreamingDataLoader
 
 # --- Helper Classes (Polyfills for missing files) ---
 
@@ -85,6 +86,10 @@ def parse_args():
                        help='Directory to save checkpoints')
     parser.add_argument('--cache_dir', type=str, default='cached_data',
                        help='Directory with cached data')
+    parser.add_argument('--stream', action='store_true',
+                       help='Stream data from HuggingFace instead of using cached data')
+    parser.add_argument('--dataset', type=str, default='HuggingFaceFW/fineweb-edu',
+                       help='HuggingFace dataset to stream from (used with --stream)')
     return parser.parse_args()
 
 
@@ -347,15 +352,30 @@ def main():
     )
     print("✓ Memory initialized")
     
-    # Initialize CachedDataLoader
-    print(f"\nInitializing CachedDataLoader from {args.cache_dir}...")
-    try:
-        data_loader = CachedDataLoader(args.cache_dir, device, target_batch_size=config.batch_size)
-        print(f"✓ Data loader initialized with {data_loader.n_text_steps} batches (Batch Size: {config.batch_size})")
-    except Exception as e:
-        print(f"!! Error initializing data loader: {e}")
-        print("Please run cache_data.py first!")
-        return
+    # Initialize Data Loader
+    if args.stream:
+        print(f"\nInitializing StreamingDataLoader ({args.dataset})...")
+        skip = 0
+        if args.resume:
+            # Rough estimate: skip processed samples to avoid repeating data
+            skip = start_step * config.batch_size
+        data_loader = StreamingDataLoader(
+            dataset_name=args.dataset,
+            device=device,
+            target_batch_size=config.batch_size,
+            seq_len=config.seq_len,
+            skip_samples=skip
+        )
+        print(f"✓ Streaming data loader ready (Batch Size: {config.batch_size})")
+    else:
+        print(f"\nInitializing CachedDataLoader from {args.cache_dir}...")
+        try:
+            data_loader = CachedDataLoader(args.cache_dir, device, target_batch_size=config.batch_size)
+            print(f"✓ Data loader initialized with {data_loader.n_text_steps} batches (Batch Size: {config.batch_size})")
+        except Exception as e:
+            print(f"!! Error initializing data loader: {e}")
+            print("Please run cache_data.py first, or use --stream to stream from HuggingFace.")
+            return
 
     # Check for resume
     start_step = 0

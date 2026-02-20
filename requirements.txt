@@ -1,8 +1,6 @@
-jax
-jaxlib
-equinox
-optax
-diffrax
-einops
-numpy
-wandb
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.14.0
+numpy>=1.24.0
+tqdm
+matplotlib
